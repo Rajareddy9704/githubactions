@@ -2,11 +2,11 @@ name: Clean Stale Branches
 
 on:
   schedule:
-    - cron: "*/5 * * * *"  # Runs every 5 minutes
+    - cron: "*/5 * * * *"  # Runs the workflow every 5 minutes
   workflow_dispatch:      # Allows manual triggering of the workflow
 
 permissions:
-  contents: write  # Allows deleting branches
+  contents: write  # Allows GitHub Actions to delete branches
 
 jobs:
   clean-branches:
@@ -28,42 +28,44 @@ jobs:
         run: |
           CURRENT_TIME=$(date +%s)
           FIVE_MINUTES_AGO=$(($CURRENT_TIME - 300))
+          
+          # Create a file to store stale branches (this file will be created automatically in the repository root)
           touch stale_branches.txt
+
+          # Loop through all branches and check when they were last updated
           git for-each-ref --sort=-committerdate refs/heads/ \
             --format='%(committerdate:unix) %(refname:short)' | while read -r timestamp branch; do
               # Skip protected branches (main, develop, testing)
               if [[ "$branch" == "main" || "$branch" == "develop" || "$branch" == "testing" ]]; then
                 continue
               fi
-              # Skip branches with user-specific prefixes (alice/, bob/, etc.)
-              if [[ "$branch" =~ ^(alice|bob|charlie)/ ]]; then
-                continue
-              fi
               if [ $timestamp -lt $FIVE_MINUTES_AGO ]; then
                 echo "Branch to delete: $branch"
+                # Append the stale branch name to the stale_branches.txt file
                 echo "$branch" >> stale_branches.txt
               fi
           done
         shell: bash
 
-      - name: Debug: Display Stale Branches
+      - name: Debug:Display Stale Branches
         run: |
-          cat stale_branches.txt
+          # Check if the stale_branches.txt file exists and is not empty
+          if [ -f stale_branches.txt ] && [ -s stale_branches.txt ]; then
+            echo "Stale branches found:"
+            cat stale_branches.txt  # Display the stale branches in the file
+          else
+            echo "No stale branches found."
+          fi
 
       - name: Delete Stale Branches
         if: success() && steps.identify_stale.outputs.stale_branches != ''
         run: |
-          while read -r branch; do
-            # Verify if the branch exists remotely
-            git ls-remote --exit-code --heads origin "$branch" && echo "Branch exists: $branch" || echo "Branch does not exist: $branch"
-            
-            # If the branch exists, delete it
-            git rev-parse --verify "$branch" &>/dev/null
-            if [ $? -eq 0 ]; then
-              echo "Deleting branch: $branch"
-              git push origin --delete "$branch"
-            else
-              echo "Branch $branch does not exist, skipping deletion."
-            fi
-          done < stale_branches.txt
+          if [ -f stale_branches.txt ] && [ -s stale_branches.txt ]; then
+            while read -r branch; do
+              # Verify if the branch exists remotely
+              git push origin --delete "$branch"  # Delete the branch from the remote
+            done < stale_branches.txt
+          else
+            echo "No stale branches found to delete."
+          fi
         shell: bash
