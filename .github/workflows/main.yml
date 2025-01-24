@@ -5,6 +5,9 @@ on:
     - cron: "*/5 * * * *"  # Runs every 5 minutes
   workflow_dispatch:      # Allows manual triggering of the workflow
 
+permissions:
+  contents: write  # Allows deleting branches
+
 jobs:
   clean-branches:
     runs-on: ubuntu-latest
@@ -43,7 +46,7 @@ jobs:
           done
         shell: bash
 
-      - name: Output Stale Branches (for debugging)
+      - name: Debug: Display Stale Branches
         run: |
           cat stale_branches.txt
 
@@ -51,7 +54,10 @@ jobs:
         if: success() && steps.identify_stale.outputs.stale_branches != ''
         run: |
           while read -r branch; do
-            # Check if the branch exists before attempting to delete
+            # Verify if the branch exists remotely
+            git ls-remote --exit-code --heads origin "$branch" && echo "Branch exists: $branch" || echo "Branch does not exist: $branch"
+            
+            # If the branch exists, delete it
             git rev-parse --verify "$branch" &>/dev/null
             if [ $? -eq 0 ]; then
               echo "Deleting branch: $branch"
