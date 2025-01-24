@@ -1,0 +1,46 @@
+name: Delete Stale Branches
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # Runs every 5 minutes
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  delete-stale-branches:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all branches to check for stale ones
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "Rajareddy9704"
+          git config --global user.email "bhumireddyrajareddy01@gmail.com"
+
+      - name: Find and Delete Stale Branches
+        run: |
+          current_time=$(date +%s)
+          stale_branches=(develop,feature,testing)
+
+          # Fetch remote branches
+          for branch in $(git branch -r | grep -v "origin/main\|origin/master" | sed 's/origin\///'); do
+            # Get the latest commit timestamp for the branch
+            last_commit_time=$(git log -1 --pretty=format:%ct origin/$branch)
+            time_diff=$(( (current_time - last_commit_time) / 60 ))
+
+            # Check if the branch is stale (no commits in the last 5 minutes)
+            if [ "$time_diff" -gt 5 ]; then
+              stale_branches+=("$branch")
+            fi
+          done
+
+          echo "Stale branches: ${stale_branches[@]}"
+
+          # Delete stale branches
+          for stale_branch in "${stale_branches[@]}"; do
+            echo "Deleting branch: "$stale_branch"
+            git push origin --delete "$stale_branch"
+          done
